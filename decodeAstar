@@ -1,0 +1,154 @@
+#!/usr/bin/env python
+import optparse
+import sys
+import models
+from sets import Set
+from collections import namedtuple
+from Queue import PriorityQueue
+from utils import MySet, QueueKey
+from itertools import chain, combinations
+
+def RangeList(coverage,rangeSet):
+  copySet = coverage.copy()
+  if len(copySet) == 0:
+    ret = rangeSet[0]
+    for x in range(0,len(rangeSet)):
+      ret.update(rangeSet[x])
+    ret.update(Set([(0,len(rangeSet))]))
+    return ret
+  ret = rangeSet[copySet.pop()]
+  while len(copySet) != 0:
+    ret.intersection_update(rangeSet[copySet.pop()])
+  return ret
+  
+
+optparser = optparse.OptionParser()
+optparser.add_option("-i", "--input", dest="input", default="data/input", help="File containing sentences to translate (default=data/input)")
+optparser.add_option("-t", "--translation-model", dest="tm", default="data/tm", help="File containing translation model (default=data/tm)")
+optparser.add_option("-l", "--language-model", dest="lm", default="data/lm", help="File containing ARPA-format language model (default=data/lm)")
+optparser.add_option("-n", "--num_sentences", dest="num_sents", default=sys.maxint, type="int", help="Number of sentences to decode (default=no limit)")
+optparser.add_option("-k", "--translations-per-phrase", dest="k", default=1, type="int", help="Limit on number of translations to consider per phrase (default=1)")
+optparser.add_option("-s", "--stack-size", dest="s", default=1, type="int", help="Maximum stack size (default=1)")
+optparser.add_option("-v", "--verbose", dest="verbose", action="store_true", default=False,  help="Verbose mode (default=off)")
+opts = optparser.parse_args()[0]
+
+tm = models.TM(opts.tm, opts.k)
+lm = models.LM(opts.lm)
+french = [tuple(line.strip().split()) for line in open(opts.input).readlines()[:opts.num_sents]]
+
+# tm should translate unknown words as-is with probability 1
+for word in set(sum(french,())):
+  if (word,) not in tm:
+    tm[(word,)] = [models.phrase(word, 0.0)]
+
+sys.stderr.write("Decoding %s...\n" % (opts.input,))
+for f in french:
+  size = len(f)
+  search_range = [Set([]) for _ in xrange(size)]
+  for i in range(size):
+    for j in range(i+1,size+1):
+      for k in range(size):
+        if i > k or k >= j:
+          search_range[k].add((i,j))
+  def powerset_generator(i):
+    for subset in chain.from_iterable(combinations(i, r) for r in range(len(i)+1)):
+        yield set(subset)
+  heuristic = {}
+  s = Set([])
+  for x in range(len(f)):
+    s.add(x)
+  for i in powerset_generator(s):
+    if len(i) != 0 and len(i) != len(s):
+        heuristic[MySet(i)] = float("-inf")
+  for x in heuristic:
+    not_covered = []
+    ref = x.copy()
+    for y in range(len(s)):
+        if y not in ref:
+            not_covered.append(y)
+    h_f = 0
+    for y in not_covered:
+      best_prob = float("-inf")
+      for word in tm[f[y:y+1]]:
+        if best_prob < word.logprob:
+          best_prob = word.logprob
+      h_f += best_prob
+    heuristic[x] = h_f
+    print "{}\n".format(x.copy())
+      
+  # The following code implements a monotone decoding
+  # algorithm (one that doesn't permute the target phrases).
+  # Hence all hypotheses in stacks[i] represent translations of 
+  # the first i words of the input sentence. You should generalize
+  # this so that they can represent translations of *any* i words.
+  hypothesis = namedtuple("hypothesis", "logprob, lm_state, predecessor, phrase, coverage")
+  pqueue = {}
+  h = hypothesis(0.0, lm.begin(), None, None, Set([]))
+  sys.stderr.write("start:{}\n".format(len(f)))
+  count = 0
+  average = 0
+  maxCover = 0
+  while len(h.coverage) < len(f):
+    search_list = RangeList(h.coverage,search_range)
+    for x in search_list:
+      french_words = french_words = f[x[0]:x[1]]
+      add_coverage = h.coverage.copy()
+      for x in range(x[0],x[1]):
+        add_coverage.add(x)
+      if french_words in tm:
+          for phrase in tm[french_words]:
+            logprob = h.logprob + phrase.logprob
+            lm_state = h.lm_state
+            for word in phrase.english.split():
+              (lm_state, word_logprob) = lm.score(lm_state, word)
+              logprob += word_logprob
+            coverage = h.coverage.union(add_coverage)
+            logprob += lm.end(lm_state) if len(coverage) == len(f) else 0.0
+            new_hypothesis = hypothesis(logprob, lm_state, h, phrase, coverage)
+            sys.stderr.write("error: {}".format(coverage))
+            key = QueueKey(lm_state,MySet(coverage),logprob+heuristic[MySet(coverage)])
+            if key not in pqueue or pqueue[key].logprob < logprob: # second case is recombination
+              pqueue[key] = new_hypothesis
+    h_key = sorted(pqueue.iterkeys(),key=lambda x: x.heuristic).pop()
+    h = pqueue[h_key]
+    del pqueue[h_key]
+    count += 1
+    average += len(h.coverage)
+    if len(h.coverage) > maxCover:
+      maxCover = len(h.coverage)
+    if count == 500:
+      sys.stderr.write("{}, max: {}\n".format(average/count, maxCover))
+      count = 0
+      average = 0
+    
+  #stacks = [{} for _ in f] + [{}]
+  #stacks[0][lm.begin()] = initial_hypothesis
+  """
+  for i, stack in enumerate(stacks[:-1]):
+    for h in sorted(stack.itervalues(),key=lambda h: -h.logprob)[:opts.s]: # prune
+      for j in xrange(i+1,len(f)+1):
+        if f[i:j] in tm:
+          for phrase in tm[f[i:j]]:
+            logprob = h.logprob + phrase.logprob
+            lm_state = h.lm_state
+            for word in phrase.english.split():
+              (lm_state, word_logprob) = lm.score(lm_state, word)
+              logprob += word_logprob
+            logprob += lm.end(lm_state) if j == len(f) else 0.0
+            new_hypothesis = hypothesis(logprob, lm_state, h, phrase)
+            if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob: # second case is recombination
+              stacks[j][lm_state] = new_hypothesis
+  
+              
+  #winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
+  def extract_english(h): 
+    return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
+  print extract_english(h)
+
+  if opts.verbose:
+    def extract_tm_logprob(h):
+      return 0.0 if h.predecessor is None else h.phrase.logprob + extract_tm_logprob(h.predecessor)
+    tm_logprob = extract_tm_logprob(h)
+    sys.stderr.write("LM = %f, TM = %f, Total = %f\n" % 
+      (h.logprob - tm_logprob, tm_logprob, h.logprob))
+  """
