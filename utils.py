@@ -5,10 +5,8 @@ class MySet:
         self.coverage = theSet
     
     def __hash__(self):
-        ret = 0
-        for x in self.coverage:
-            ret += x
-        return ret
+        y = sorted(self.coverage)
+        return hash(tuple(y))
     
     def __eq__(self, other):
         return self.coverage == other.coverage
@@ -19,6 +17,9 @@ class MySet:
     def copy(self):
         return self.coverage.copy()
     
+    def __str__(self):
+        return self.coverage.__str__()
+    
 class QueueKey:
     def __init__(self, lm_state, coverage, heuristic):
         self.lm_state = lm_state
@@ -26,7 +27,8 @@ class QueueKey:
         self.heuristic = heuristic
         
     def __hash__(self):
-        return hash((self.lm_state, self.coverage))
+        y = sorted(self.coverage.copy())
+        return hash((self.lm_state, tuple(y)))
     
     def __eq__(self, other):
         return (self.lm_state, self.coverage) == (other.lm_state, other.coverage)
