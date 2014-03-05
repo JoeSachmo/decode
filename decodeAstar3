@@ -92,24 +92,24 @@ for f in french:
   while len(h.coverage) < len(f):
     add = 0
     search_list = RangeList(h.coverage,search_range)
-    for x in search_list:
-      french_words = f[x[0]:x[1]]
-      add_coverage = h.coverage.copy()
-      for y in range(x[0],x[1]):
-        add_coverage.add(y)
-      if french_words in tm:
-        for phrase in tm[french_words]:
-          logprob = h.logprob + phrase.logprob
-          lm_state = h.lm_state
-          for word in phrase.english.split():
-            (lm_state, word_logprob) = lm.score(lm_state, word)
-            logprob += word_logprob
-          #coverage = h.coverage.union(add_coverage)
-          logprob += lm.end(lm_state) if len(add_coverage) == len(f) else 0.0
-          new_hypothesis = hypothesis(logprob, lm_state, h, phrase, add_coverage)
-          key = QueueKey(lm_state,MySet(add_coverage),logprob+heuristic[MySet(add_coverage)])
-          if key not in pqueue or pqueue[key].logprob < logprob: # second case is recombination
-            pqueue[key] = new_hypothesis
+    for x in range(len(f)):
+      if x not in h.coverage:
+        french_words = f[x:x+1]
+        add_coverage = h.coverage.copy()
+        add_coverage.add(x)
+        if french_words in tm:
+          for phrase in tm[french_words]:
+            logprob = h.logprob + phrase.logprob
+            lm_state = h.lm_state
+            for word in phrase.english.split():
+              (lm_state, word_logprob) = lm.score(lm_state, word)
+              logprob += word_logprob
+            #coverage = h.coverage.union(add_coverage)
+            logprob += lm.end(lm_state) if len(add_coverage) == len(f) else 0.0
+            new_hypothesis = hypothesis(logprob, lm_state, h, phrase, add_coverage)
+            key = QueueKey(lm_state,MySet(add_coverage),logprob+heuristic[MySet(add_coverage)])
+            if key not in pqueue or pqueue[key].logprob < logprob: # second case is recombination
+              pqueue[key] = new_hypothesis
     if h_key != "":
       del pqueue[h_key]
     h_key = sorted(pqueue.iterkeys(),key=lambda x: x.heuristic).pop()
