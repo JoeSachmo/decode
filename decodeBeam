@@ -38,7 +38,23 @@ for f in french:
     for h in sorted(stack.itervalues(),key=lambda h: -h.logprob)[:opts.s]: # prune
       for j in xrange(i+1,len(f)+1):
         if f[i:j] in tm:
-          for phrase in tm[f[i:j]]:
+
+					#swp = list()
+					#swpT = []
+					#if len(f[i:j]) > 1 : 
+					#for swpL in range(len(f[i:j])):
+					#   swpT = f[i:j]
+					#   for idx in xrange(len(f[i:j])):
+					#       if idx > i and idx < j:
+					# 				if len(f[i:j]) > 2:
+					#   				swp.append(swpT[:(idx-1)] + swpT[idx] + swpT[(idx-1)] + swpT[(idx+1):])
+					# 				else:
+					# 					swp.append(swpT[idx:j] + swpT[i:idx])
+					#					disaligns
+					#   swp.append(f[idx:j] + f[i:idx]) <-does not break/does not help
+					#fT = tuple(swp)
+					
+					for phrase in tm[f[i:j]]:
             logprob = h.logprob + phrase.logprob
             lm_state = h.lm_state
             for word in phrase.english.split():
@@ -48,7 +64,22 @@ for f in french:
             new_hypothesis = hypothesis(logprob, lm_state, h, phrase)
             if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob: # second case is recombination
               stacks[j][lm_state] = new_hypothesis 
-  winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
+  				
+						#for pC in fT:
+						# if pC in tm:
+						#   for phrase in tm[pC]:
+						#     logprob = h.logprob + phrase.logprob
+						#     lm_state = h.lm_state
+						#     for word in phrase.english.split():
+						#       (lm_state, word_logprob) = lm.score(lm_state, word)
+						#       logprob += word_logprob
+						#     logprob += lm.end(lm_state) if j == len(f) else 0.0
+						#     new_hypothesis = hypothesis(logprob, lm_state, h, phrase)
+						#     if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob:
+						#       stacks[j][lm_state] = new_hypothesis
+
+
+	winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
   def extract_english(h): 
     return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
   print extract_english(winner)
