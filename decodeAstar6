@@ -43,6 +43,7 @@ for word in set(sum(french,())):
 
 sys.stderr.write("Decoding %s...\n" % (opts.input,))
 for f in french:
+  sys.stderr.write("start!\n")
   size = len(f)
   search_range = [Set([]) for _ in xrange(size)]
   for i in range(size):
@@ -57,36 +58,40 @@ for f in french:
   s = Set([])
   for x in range(len(f)):
     s.add(x)
-  for i in powerset_generator(s):
-    if len(i) != 0 and len(i) != len(s):
-      heuristic[MySet(i)] = float("-inf")
-    elif len(i) == len(s):
-      heuristic[MySet(i)] = 0
-  for x in heuristic:
-    not_covered = []
-    ref = x.copy()
-    for y in range(len(s)):
-        if y not in ref:
-            not_covered.append(y)
-    h_f = 0
-    for y in not_covered:
-      best_prob = float("-inf")
-      for word in tm[f[y:y+1]]:
-        if best_prob < word.logprob:
-          best_prob = word.logprob
-      h_f += best_prob
-    heuristic[x] = h_f
-      
+  oversized = False
+  if len(f) >= 20:
+    oversized = True
+  if not oversized:
+    for i in powerset_generator(s):
+      if len(i) != 0 and len(i) != len(s):
+        heuristic[MySet(i)] = float("-inf")
+      elif len(i) == len(s):
+        heuristic[MySet(i)] = 0
+    for x in heuristic:
+      not_covered = []
+      ref = x.copy()
+      for y in range(len(s)):
+          if y not in ref:
+              not_covered.append(y)
+      h_f = 0
+      for y in not_covered:
+        best_prob = float("-inf")
+        for word in tm[f[y:y+1]]:
+          if best_prob < word.logprob:
+            best_prob = word.logprob
+        h_f += best_prob
+      heuristic[x] = h_f
   # The following code implements a monotone decoding
   # algorithm (one that doesn't permute the target phrases).
   # Hence all hypotheses in stacks[i] represent translations of 
   # the first i words of the input sentence. You should generalize
   # this so that they can represent translations of *any* i words.
   hypothesis = namedtuple("hypothesis", "logprob, lm_state, predecessor, phrase, coverage")
-  pqueue = {}
+  pqueue = PriorityQueue()
   h = hypothesis(0.0, lm.begin(), None, None, Set([]))
   sys.stderr.write("start:{}\n".format(len(f)))
   count = 0
+  maxSize = 10000
   average = 0
   average_h = 0
   h_key = ""
@@ -94,12 +99,17 @@ for f in french:
   while len(h.coverage) < len(f):
     add = 0
     search_list = RangeList(h.coverage,search_range)
+    #if h.coverage == Set([10,5,6,7]):
+    #  print search_list
     for x in search_list:
       french_words = f[x[0]:x[1]]
       add_coverage = h.coverage.copy()
       for y in range(x[0],x[1]):
         add_coverage.add(y)
       if french_words in tm:
+        #print x
+        #print french_words
+        #print add_coverage
         for phrase in tm[french_words]:
           logprob = h.logprob + phrase.logprob
           lm_state = h.lm_state
@@ -109,21 +119,48 @@ for f in french:
           #coverage = h.coverage.union(add_coverage)
           logprob += lm.end(lm_state) if len(add_coverage) == len(f) else 0.0
           new_hypothesis = hypothesis(logprob, lm_state, h, phrase, add_coverage)
-          #sys.stderr.write("{}".format(add_coverage))
-          key = QueueKey(lm_state,MySet(add_coverage),logprob+heuristic[MySet(add_coverage)])
-          if key not in pqueue or pqueue[key].logprob < logprob: # second case is recombination
-            pqueue[key] = new_hypothesis
-    if h_key != "":
-      del pqueue[h_key]
-    h_key = sorted(pqueue.iterkeys(),key=lambda x: x.heuristic).pop()
-    h = pqueue[h_key]
+          heuristic_val = 0
+          if oversized:
+            not_covered = []
+            ref = h.coverage.copy()
+            for y in range(len(f)):
+                if y not in ref:
+                    not_covered.append(y)
+            h_f = 0
+            for y in not_covered:
+              best_prob = float("-inf")
+              for word in tm[f[y:y+1]]:
+                if best_prob < word.logprob:
+                  best_prob = word.logprob
+              h_f += best_prob
+            heuristic_val = h_f
+          else:
+            heuristic_val = heuristic[MySet(add_coverage)]
+          found = False
+          for y in range(pqueue.qsize()):
+            if pqueue.queue[y][1].lm_state != lm_state or pqueue.queue[y][1].coverage != add_coverage:
+              continue
+            elif pqueue.queue[y][1].logprob < logprob:
+              del pqueue.queue[y]
+              pqueue.put((-(logprob+heuristic_val),new_hypothesis))
+              found = True
+              break
+            else:
+              found = True
+              break
+          if found == False:
+            if pqueue.qsize() == maxSize:
+              del pqueue.queue[pqueue.qsize()-1]
+            pqueue.put((-(logprob+heuristic_val),new_hypothesis))
+    h_queue = pqueue.get()
+    h = h_queue[1]
     count += 1
     average += len(h.coverage)
-    average_h += h_key.heuristic
+    average_h += h_queue[0]
     if len(h.coverage) > maxCover:
       maxCover = len(h.coverage)
     if count == 500:
-      sys.stderr.write("{}, max: {}, heuristic: {}  size: {}\n".format(average/count, maxCover, average_h/count, len(pqueue)))
+      sys.stderr.write("{}, max: {}, heuristic: {}  size: {}\n".format(average/count, maxCover, average_h/count, pqueue.qsize()))
       count = 0
       average = 0
       average_h = 0
