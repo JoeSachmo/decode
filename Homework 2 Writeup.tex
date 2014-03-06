@@ -69,10 +69,33 @@
 \section{Introduction}
 Given a translation model and a language model, our task was to find the best way to decode a source sentence into the target language. In order to do this we constructed two search algorithms to sift through the vast search space, the first being a phrase based beam search with phrase swapping and the second being A* search. [INSERT MOTIVATION FOR BEAM SEARCH]. On the other hand, A* takes advantage of a heuristic function to determine which hypothesis is most likely to have maximum log probability on termination. Using both the current log probability of the hypothesis and its heuristic function we can order the hypotheses in a priority queue and update the most desirable first.
 \section{Algorithm}
-In order to search for the best hypothesis, a few things need to be initialized. The first of these is our heuristic function. The heuristic function used for this algorithm is a very simple maximized translation probability. For each position in the source sentence that has not been translated, we find the corresponding target word that gives the source word the highest probability. We then sum over the log probabilities of all such source words that are not in the coverage set to obtain the heuristic function for that coverage set.   \\\\
+In order to search for the best hypothesis, a few things need to be initialized. The first of these is our heuristic function. The heuristic function used for this algorithm is a very simple maximized translation probability. For each position in the source sentence that has not been translated, we find the corresponding target word that gives the source word the highest probability. We then sum over the log probabilities of all such source words that are not in the coverage set to obtain the heuristic function for that coverage set. However, because of the exponential growth of the memory needed for this heuristic function based upon sentence length, sentences with a length of 20 or more words did not have the function pre processed. This is because their functions could not be stored in memory. This provided a large speed up to the algorithm.\\\\
 We then must initialize the potential search space for each coverage set. Since we are using phrased based translation, we must search the power set of potential french phrases. In order to do this while still keeping memory usage at a minimum, we index a list of tuples by the position in the source sentence such that the tuples represent all combinations of the source sentence that do not include the source word at the given index. In order to get the search space of a coverage set, one would only need to find the intersection with all indexes in the coverage set.\\\\
 Now we need to find the optimal hypothesis for this translation. In order to do this, we iterate through all possible source phrases in the sentence that aren't in the coverage set of the current hypothesis. If they appear in the translation model, we then adjust the log probability of the current hypothesis using the translation and language models, updated the language model state, and updated the coverage set of the hypothesis. We then check this new hypothesis against those that are already in the priority queue. If there are no entries that have the same language model state and coverage set then we add the new hypothesis to the queue. As well, if there already exists an entry with the same language model state and coverage set, but our new hypothesis has a greater log probability, we replace the old hypothesis with our new one. However, if neither one of these states happen, we discard the new hypothesis. Finally, we update the current hypothesis by popping off the best hypothesis that is currently on the stack and update this hypothesis all over again. \\\\
 This loop of hypothesis updates continues until we pop off a hypothesis whose coverage set is the same size as the source sentence length. This is therefore a closed hypothesis and the one that has the greatest probability.
 \section{Results}
-[UPDATE IN THE MORNING]
+Unfortunately, because of the nature of A* and the massive search space that we are trying to look through, obtaining the best translation increases with exponential time based on the sentence length. Because of its massive size we were unable to decode the entire dataset to the target language. Another reason for the long search times is the trade off between an efficient search for the minimum value for the priority queue and an efficient search for an arbitrary value for recombination of identical hypotheses. Therefore, we used pruning to speed up the search by limiting the amount of hypotheses in the priority queue. Yet this too took a vast amount of time to decode the entire dataset. As well, as you can see in Figure [NUM HERE] if we pruned too much it would have a negative effect on the search. \\\\
+However, we were still able to test the algorithm to show improvement as you can see in Figure [NUM HERE]. We ran A* against beam search on sentences of length less than 10 to obtain some sort of metric on search improvement of A*. \\\\
+Some potential improvements for this A* algorithm would be to add better pruning algorithms to speed up the search or possibly better data structures that facilitate the hypotheses better. As well, more work can be done on exploring different heuristic functions to get a more accurate representation of a potential translation.
+\\\\\\
+\begin{minipage}{0.5\linewidth} 
+\begin{tabular}{|c|c|}
+\hline
+Algorithm & Log Probability \\ \hline
+Beam w/o Swapping & \\ \hline
+Beam w/ Swapping & \\ \hline
+A* (max 1000) & -1659.835994 \\ \hline
+\end{tabular} 
+\end{minipage} 
+\hspace{0.5cm} 
+\begin{minipage}{0.5\linewidth} 
+\begin{tabular}{|c|c|}
+\hline
+Algorithm & Log Probability \\ \hline
+Beam w/o Swapping & -95.570621\\ \hline
+A* & -88.688165 \\ \hline
+\end{tabular} 
+\end{minipage}
+
+
 \end{document} 
